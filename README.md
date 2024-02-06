@@ -18,9 +18,9 @@ The signal is submitted to the first configured PWM pin, check with: `gpio.pin(g
 
 Following parameter could be configured in the `persist` module:
 
-`dcf77_time_offset` - boolean (default: 0): Specify the time offset of the transmitted time (by default next minute)
+`dcf77_time_offset` - integer (default: 0): Specify the time offset of the transmitted time (by default next minute)
 
-`dcf77_dst` - integer (default: false): By default the local time is submitted as CET. Set to `true` to submit it as CEST.
+`dcf77_dst` - boolean (default: false): By default the local time is submitted as CET. Set to `true` to submit it as CEST.
 
 ## Antenna
 Best results are achieved if you connect a ferrite antenna over 330 ohm resistor and a capactior to ground.
