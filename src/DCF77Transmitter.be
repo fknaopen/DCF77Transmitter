@@ -19,20 +19,20 @@ class DCF77Transmitter
     self.dcf77_time_offset = persist.find('dcf77_time_offset', 0)
     self.dcf77_dst = persist.find('dcf77_dst', false)
     self.dcf77_bits = [
-      0,                                                                  # 00: Start of minute
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,                           # 01: Weather broadcast / Civil warning bits
-      0,                                                                  # 15: Call bit: abnormal transmitter operation
-      0,                                                                  # 16: Summer time announcement. Set during hour before change
-      0, 1,                                                               # 17: 01=CET, 10=CEST
-      0,                                                                  # 19: Leap second announcement. Set during hour before leap second
-      1,                                                                  # 20: Start of encoded time
-      0, 0, 0, 0, 0, 0, 0, 0,                                             # 21: Minutes (7bit + parity, 00-59)
-      0, 0, 0, 0, 0, 0, 0,                                                # 29: Hours (6bit + parity, 0-23)
-      0, 0, 0, 0, 0,                                                      # 36: Day of month (6bit, 1-31)
-      0, 0, 0,                                                            # 42: Day of week (3bit, 1-7, Monday=1)
-      0, 0, 0, 0, 0,                                                      # 45: Month number (5bit, 1-12)
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0,                                       # 50: Year within century (8bit + parity, 00-99)
-      -1                                                                  # 59: Not used
+      0,                                        # 00: Start of minute
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, # 01: Weather broadcast / Civil warning bits
+      0,                                        # 15: Call bit: abnormal transmitter operation
+      0,                                        # 16: Summer time announcement. Set during hour before change
+      0, 1,                                     # 17: 01=CET, 10=CEST
+      0,                                        # 19: Leap second announcement. Set during hour before leap second
+      1,                                        # 20: Start of encoded time
+      0, 0, 0, 0, 0, 0, 0, 0,                   # 21: Minutes (7bit + parity, 00-59)
+      0, 0, 0, 0, 0, 0, 0,                      # 29: Hours (6bit + parity, 0-23)
+      0, 0, 0, 0, 0,                            # 36: Day of month (6bit, 1-31)
+      0, 0, 0,                                  # 42: Day of week (3bit, 1-7, Monday=1)
+      0, 0, 0, 0, 0,                            # 45: Month number (5bit, 1-12)
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0,             # 50: Year within century (8bit + parity, 00-99)
+      -1                                        # 59: Not used
     ]
 
     tasmota.cmd(f"PWMFrequency {self.PWM_FREQENCY}",true)
