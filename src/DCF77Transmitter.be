@@ -10,13 +10,23 @@ class DCF77Transmitter
   static PWM_ON = 127
   static PWM_OFF = 0
 
-  var dcf77_time_offset
+  static DST_BIT = 17
+  static MIN_BIT = 21
+  static HOUR_BIT = 29
+  static DAY_BIT = 36
+  static WEEKDAY_BIT = 42
+  static MONTH_BIT = 45
+  static YEAR_BIT = 50
+
+  var localtime_offset
+  var dcf77_offset
   var dcf77_dst
   var dcf77_bits
   var sec
 
   def init()
-    self.dcf77_time_offset = persist.find('dcf77_time_offset', 0)
+    self.localtime_offset = persist.find('localtime_offset', 0) # adjust every_second() time
+    self.dcf77_offset = persist.find('dcf77_offset', 60) # submit next minute
     self.dcf77_dst = persist.find('dcf77_dst', false)
     self.dcf77_bits = [
       0,                                        # 00: Start of minute
@@ -32,12 +42,15 @@ class DCF77Transmitter
       0, 0, 0,                                  # 42: Day of week (3bit, 1-7, Monday=1)
       0, 0, 0, 0, 0,                            # 45: Month number (5bit, 1-12)
       0, 0, 0, 0, 0, 0, 0, 0, 0,                # 50: Year within century (8bit + parity, 00-99)
-      -1                                        # 59: Not used
+      0                                         # 59: Not used
     ]
 
     tasmota.cmd(f"PWMFrequency {self.PWM_FREQENCY}",true)
     tasmota.cmd(f"PWMRange {self.PWM_RANGE}",true)
-    self.set_time()
+
+    var localtime = tasmota.rtc()["local"] + self.localtime_offset
+    self.sec = tasmota.time_dump(localtime)["sec"]
+    self.set_dcf77_time(localtime)
 
     tasmota.add_driver(self)
   end
@@ -50,7 +63,7 @@ class DCF77Transmitter
     tasmota.remove_driver(self)
   end
 
-  def encode_bcd(val, start, len)
+  def encode_bcd(start, len, val)
     var byte = ((val / 10) << 4) + (val % 10)
     for bit: 0..len-1
       self.dcf77_bits[start + bit] = (byte >> bit) & 1
@@ -65,58 +78,51 @@ class DCF77Transmitter
     self.dcf77_bits[start + len] = parity
   end
 
-  def dcf77_encode(tH, tM, dW, dD, dM, dY, dst)
-    self.encode_bcd(dst, 17, 2)
-    self.encode_bcd(tM, 21, 7)
-    self.even_parity(21, 7)
-    self.encode_bcd(tH, 29, 6)
-    self.even_parity(29, 6)
-    self.encode_bcd(dD, 36, 6)
-    self.encode_bcd(dW, 42, 3)
-    self.encode_bcd(dM, 45, 5)
-    self.encode_bcd(dY, 50, 8)
-    self.even_parity(36, 22)
-  end
-
   def dcf77_dump()
     var res = ""
-    for i: 0..58
-      if [1, 15, 21, 29, 36, 42, 45, 50].find(i) != nil
+    for bit: 0..58
+      if [1, 15, 21, 29, 36, 42, 45, 50].find(bit) != nil
         res += "-"
       end
-      res += string.char(string.byte('0') + self.dcf77_bits[i])
+      res += string.char(string.byte('0') + self.dcf77_bits[bit])
     end
     return res
   end
 
-  def set_time()
-    var rtc = tasmota.rtc()["local"] + self.dcf77_time_offset
-    self.sec = tasmota.time_dump(rtc)["sec"]
-    var time = tasmota.time_dump(rtc+60-self.sec) # transmit next minute
-    var tH = time["hour"]
-    var tM = time["min"]
-    var dW = time["weekday"]
-    var dD = time["day"]
-    var dM = time["month"]
-    var dY = time["year"]
-    self.dcf77_encode(tH, tM, dW == 0 ? 7 : dW, dD, dM, dY % 100, self.dcf77_dst  ? 1 : 2)
-    var timestr = tasmota.strftime("%a %d.%m.%y %H:%M",tasmota.rtc()["local"])
-    print(format("DCF77: %s %s: %s",timestr,self.dcf77_dst ? "CEST" : "CET",self.dcf77_dump()))
+  def set_dcf77_time(localtime)
+    var dcf77 = localtime + self.dcf77_offset
+    var time_dump = tasmota.time_dump(dcf77)
+    self.encode_bcd(self.DST_BIT, 2, self.dcf77_dst  ? 1 : 2)
+    self.encode_bcd(self.MIN_BIT, 7, time_dump["min"])
+    self.even_parity(self.MIN_BIT, 7)
+    self.encode_bcd(self.HOUR_BIT, 6, time_dump["hour"])
+    self.even_parity(self.HOUR_BIT, 6)
+    self.encode_bcd(self.DAY_BIT, 6, time_dump["day"])
+    self.encode_bcd(self.WEEKDAY_BIT, 3, time_dump["weekday"] == 0 ? 7 : time_dump["weekday"])
+    self.encode_bcd(self.MONTH_BIT, 5, time_dump["month"])
+    self.encode_bcd(self.YEAR_BIT, 8, time_dump["year"]% 100)
+    self.even_parity(self.DAY_BIT, 22)
+    var dcf77_time = tasmota.strftime("%a %d.%m.%y %H:%M", dcf77)
+    var dcf77_tz = self.dcf77_dst ? 'CEST' : 'CET'
+    print(f"DCF77: {dcf77_time} {dcf77_tz}: {self.dcf77_dump()}")
   end
 
   def every_second()
     if self.sec < 59
       gpio.set_pwm(gpio.pin(gpio.PWM1), self.PWM_OFF)
-      var start = tasmota.millis()
+      var stop_millis = tasmota.millis()
       var bit = self.dcf77_bits[self.sec]
-      var stop = start + (bit ? 200 : 100)
-      while !tasmota.time_reached(stop)
-        tasmota.delay(5)
+      var start_millis = stop_millis + (bit ? 200 : 100)
+      while !tasmota.time_reached(start_millis)
+        tasmota.delay(2)
       end
       gpio.set_pwm(gpio.pin(gpio.PWM1), self.PWM_ON)
       self.sec += 1
     else
-      self.set_time()
+      var time = tasmota.rtc()["local"] + self.localtime_offset
+      var str_time = tasmota.strftime("%H:%M:%S", time + 1)
+      self.set_dcf77_time(time + 1)
+      self.sec = 0;
     end
   end
 end
