@@ -27,7 +27,6 @@ class DCF77Transmitter
   var rtc_millis
   var on_millis
   var off_millis
-  var timer_id
 
   def init()
     if gpio.pin(gpio.PWM1) < 0
@@ -65,7 +64,7 @@ class DCF77Transmitter
     self.sync_time()
     self.set_dcf77_time(self.rtc + self.dcf77_offset) # next minute
 
-    tasmota.set_timer(700, /-> self.pwm_off_timer(), self.timer_id)
+    tasmota.set_timer(700, /-> self.pwm_off_timer(), "pwm_off_timer")
   end
 
   def deinit()
@@ -73,10 +72,8 @@ class DCF77Transmitter
   end
 
   def del()
-    if self.timer_id
-      tasmota.remove_timer(self.timer_id)
-      self.timer_id = nil
-    end
+    tasmota.remove_timer("pwm_off_timer")
+    tasmota.remove_timer("pwm_off_timer")
   end
 
   def encode_bcd(start, len, val)
@@ -156,7 +153,7 @@ class DCF77Transmitter
       gpio.set_pwm(gpio.pin(gpio.PWM1), self.PWM_OFF)
       var dly = self.dcf77_bits[sec] ? 200 : 100
       self.on_millis = millis + dly
-      tasmota.set_timer(dly - 50, /-> self.pwm_on_timer())
+      tasmota.set_timer(dly - 50, /-> self.pwm_on_timer(),"pwm_on_timer")
     else
       self.set_dcf77_time(self.rtc + 1 + self.dcf77_offset) # set next minute
     end
@@ -178,7 +175,7 @@ class DCF77Transmitter
     else
       self.off_millis = millis + 1000
     end
-    tasmota.set_timer(700, /-> self.pwm_off_timer(), self.timer_id)
+    tasmota.set_timer(700, /-> self.pwm_off_timer(), "pwm_off_timer")
   end
 end
 
