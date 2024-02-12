@@ -1,5 +1,6 @@
 import string
 import persist
+import introspect
 import math
 
 # https://en.wikipedia.org/wiki/DCF77
@@ -20,18 +21,25 @@ class DCF77Transmitter
   static YEAR_BIT = 50
 
   var localtime_offset
-  var dcf77_offset
-  var dcf77_dst
-  var dcf77_bits
-  var rtc
-  var rtc_millis
-  var on_millis
-  var off_millis
+  var dcf77_offset, dcf77_dst, dcf77_bits
+  var rtc, rtc_millis, on_millis, off_millis
+  var lv, clock_label
 
   def init()
     if gpio.pin(gpio.PWM1) < 0
       print("DCF77: PWM pin not configured.")
       return
+    end
+
+    self.lv = introspect.module("lv")
+    if self.lv != nil
+      self.lv.start()
+      var scr = self.lv.scr_act()
+      self.clock_label = self.lv.label(scr)
+      self.clock_label.set_text("--:--:--")
+      self.clock_label.set_align(self.lv.ALIGN_CENTER)
+      self.clock_label.set_style_text_font(self.lv.seg7_font(36), self.lv.PART_MAIN | self.lv.STATE_DEFAULT)
+      self.clock_label.set_style_text_color(self.lv.color(self.lv.COLOR_WHITE), self.lv.PART_MAIN | self.lv.STATE_DEFAULT)
     end
 
     self.localtime_offset = persist.find('localtime_offset', 0) # adjust localtime difference
@@ -72,6 +80,9 @@ class DCF77Transmitter
   end
 
   def del()
+    if self.clock_label
+      self.clock_label.del()
+    end
     tasmota.remove_timer("pwm_off_timer")
     tasmota.remove_timer("pwm_off_timer")
   end
@@ -175,6 +186,11 @@ class DCF77Transmitter
     else
       self.off_millis = millis + 1000
     end
+
+    if self.clock_label
+      self.clock_label.set_text(tasmota.strftime("%H:%M:%S", self.rtc))
+    end
+
     tasmota.set_timer(700, /-> self.pwm_off_timer(), "pwm_off_timer")
   end
 end
