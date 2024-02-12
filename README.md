@@ -1,6 +1,7 @@
 ## General 
 
-Simulates the [DCF77](https://en.wikipedia.org/wiki/DCF77) time code signal on a GPIO pin. It uses PWM with carrier frequency set to 25.833 kHz (third harmonic) as Tasmota limits the max PWM frequency to 50kHz (look for `PWM_MAX` in the source code).
+Simulates the [DCF77](https://en.wikipedia.org/wiki/DCF77) time code signal on a GPIO pin. It uses PWM with carrier frequency set to 25.833 kHz (third harmonic) as Tasmota limits the max PWM frequency to 50kHz (look for `PWM_MAX` in the source code). Also draws a digital clock on the dislplay if LVGL is supported.
+
 
 ## Installation
 Upload the Tasmota appication `DCF77Transmitter.tapp` to the file system and reboot. The application run in the background and the transmitted data is written in the logs:
@@ -18,7 +19,9 @@ The signal is submitted to the first configured PWM pin, check with: `gpio.pin(g
 
 Following parameter could be configured in the `persist` module:
 
-`dcf77_time_offset` - integer (default: 0): Specify the time offset of the transmitted time (by default next minute)
+`localtime_offset` - integer (default: 0): Adjustment for the synchronized localtime in seconds
+
+`dcf77_offset` - integer (default: 60): Time offset of the transmitted time in seconds (by default next minute)
 
 `dcf77_dst` - boolean (default: false): By default the local time is submitted as CET. Set to `true` to submit it as CEST.
 
