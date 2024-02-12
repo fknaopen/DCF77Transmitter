@@ -83,7 +83,7 @@ class DCF77Transmitter
     if self.clock_label
       self.clock_label.del()
     end
-    tasmota.remove_timer("pwm_off_timer")
+    tasmota.remove_timer("pwm_on_timer")
     tasmota.remove_timer("pwm_off_timer")
   end
 
