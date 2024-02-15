@@ -12,6 +12,9 @@ class DCF77Transmitter
   static PWM_ON = 127
   static PWM_OFF = 0
 
+  static PWM_SYNC_DURATION = 50 # 50ms
+  static SEC_SYNC_DURATION = 100 # 100ms
+
   static DST_BIT = 17
   static MIN_BIT = 21
   static HOUR_BIT = 29
@@ -20,9 +23,8 @@ class DCF77Transmitter
   static MONTH_BIT = 45
   static YEAR_BIT = 50
 
-  var localtime_offset
   var dcf77_offset, dcf77_dst, dcf77_bits
-  var rtc, rtc_millis, on_millis, off_millis
+  var pwm_millis
   var lv, clock_label
 
   def init()
@@ -42,7 +44,6 @@ class DCF77Transmitter
       self.clock_label.set_style_text_color(self.lv.color(self.lv.COLOR_WHITE), self.lv.PART_MAIN | self.lv.STATE_DEFAULT)
     end
 
-    self.localtime_offset = persist.find('localtime_offset', 0) # adjust localtime difference
     self.dcf77_offset = persist.find('dcf77_offset', 60) # submit next minute
     self.dcf77_dst = persist.find('dcf77_dst', false)
     self.dcf77_bits = [
@@ -61,18 +62,12 @@ class DCF77Transmitter
       0, 0, 0, 0, 0, 0, 0, 0, 0,                # 50: Year within century (8bit + parity, 00-99)
       0                                         # 59: Not used
     ]
-    self.rtc = 0
-    self.rtc_millis = 0
-    self.on_millis = 0
-    self.off_millis = 0
+    self.pwm_millis = 0
 
     tasmota.cmd(f"PWMFrequency {self.PWM_FREQENCY}",true)
     tasmota.cmd(f"PWMRange {self.PWM_RANGE}",true)
 
-    self.sync_time()
-    self.set_dcf77_time(self.rtc + self.dcf77_offset) # next minute
-
-    tasmota.set_timer(700, /-> self.pwm_off_timer(), "pwm_off_timer")
+    tasmota.set_timer(100, /-> self.seconds_timer(), "seconds_timer")
   end
 
   def deinit()
@@ -83,8 +78,8 @@ class DCF77Transmitter
     if self.clock_label
       self.clock_label.del()
     end
-    tasmota.remove_timer("pwm_on_timer")
-    tasmota.remove_timer("pwm_off_timer")
+    tasmota.remove_timer("pwm_timer")
+    tasmota.remove_timer("seconds_timer")
   end
 
   def encode_bcd(start, len, val)
@@ -125,73 +120,63 @@ class DCF77Transmitter
     self.encode_bcd(self.MONTH_BIT, 5, time_dump["month"])
     self.encode_bcd(self.YEAR_BIT, 8, time_dump["year"]% 100)
     self.even_parity(self.DAY_BIT, 22)
-    var dcf77_time = tasmota.strftime("%a %d.%m.%y %H:%M", time)
-    var dcf77_tz = self.dcf77_dst ? 'CEST' : 'CET'
-    print(f"DCF: {dcf77_time} {dcf77_tz}: {self.dcf77_dump()}")
   end
 
-  def sync_time()
-    var rtc = tasmota.rtc_utc()
-    while rtc != tasmota.rtc_utc()
-      tasmota.delay_microseconds(500)
-      tasmota.yield()
-      rtc = tasmota.rtc_utc()
+  def display_time(local_time)
+    if self.clock_label
+      var time_txt = tasmota.strftime("%H:%M:%S", local_time)
+      if time_txt[0] == '0'
+        time_txt = ' ' .. string.split(time_txt,1)[1] # erase leading zero
+      end
+      self.clock_label.set_text(time_txt)
     end
-    var millis = tasmota.millis()
-    self.rtc_millis = millis
-    self.off_millis = millis + 1000
-    self.rtc = tasmota.rtc()["local"] + self.localtime_offset
+    if local_time % 60 == 0
+      var dcf77_time = tasmota.strftime("%a %d.%m.%y %H:%M", local_time + self.dcf77_offset)
+      var dcf77_tz = self.dcf77_dst ? 'CEST' : 'CET'
+      print(f"DCF: {dcf77_time} {dcf77_tz}: {self.dcf77_dump()}")
+    end
   end
 
-  def pwm_on_timer()
-    while !tasmota.time_reached(self.on_millis)
-      tasmota.delay_microseconds(500)
-      tasmota.yield()
+  def pwm_timer()
+    while !tasmota.time_reached(self.pwm_millis)
+      tasmota.delay_microseconds(100)
     end
     gpio.set_pwm(gpio.pin(gpio.PWM1), self.PWM_ON)
   end
 
-  def pwm_off_timer()
-    while !tasmota.time_reached(self.off_millis)
-      tasmota.delay_microseconds(500)
-      tasmota.yield()
-    end
+  def seconds_timer()
+    var rtc_utc = tasmota.rtc_utc()
+    var rtc_utc_start = rtc_utc
     var millis = tasmota.millis()
+    var millis_start = millis
+    while rtc_utc == rtc_utc_start # wait next second
+      rtc_utc = tasmota.rtc_utc()
+      millis = tasmota.millis()
+    end
 
-    self.rtc += 1
-    var sec = self.rtc % 60
+    var sec = rtc_utc % 60
     if sec < 59
       gpio.set_pwm(gpio.pin(gpio.PWM1), self.PWM_OFF)
-      var dly = self.dcf77_bits[sec] ? 200 : 100
-      self.on_millis = millis + dly
-      tasmota.set_timer(dly - 50, /-> self.pwm_on_timer(),"pwm_on_timer")
-    else
-      self.set_dcf77_time(self.rtc + 1 + self.dcf77_offset) # set next minute
+      var pwm_silence = self.dcf77_bits[sec] ? 200 : 100
+      self.pwm_millis = millis + pwm_silence
+      tasmota.set_timer(pwm_silence - self.PWM_SYNC_DURATION, /-> self.pwm_timer(),"pwm_timer")
     end
 
-    var sec_diff = tasmota.rtc()["local"] + self.localtime_offset - self.rtc
-    var ms_diff = 1000 - (millis - self.rtc_millis)
-    self.rtc_millis = millis
+    var local_time = tasmota.rtc()["local"]
 
-    if math.abs(sec_diff) > 1
-      if math.abs(sec_diff) > 10
-        print(f"DCF: Updating time")
-      else
-        print(f"DCF: Out of sync: {sec_diff}s")
-      end
-      self.sync_time()
-    elif math.abs(ms_diff) > 10
-      print(f"DCF: Out of sync: {ms_diff}ms")
-      self.sync_time()
-    else
-      self.off_millis = millis + 1000
+    if sec == 59 # prepare next time code
+      self.set_dcf77_time(local_time + 1 + self.dcf77_offset)
     end
 
-    if self.clock_label
-      self.clock_label.set_text(tasmota.strftime("%H:%M:%S", self.rtc))
+    var sync_duration = millis - millis_start
+    if sync_duration > self.SEC_SYNC_DURATION
+      print(f"DCF: Out of sync")
     end
 
-    tasmota.set_timer(700, /-> self.pwm_off_timer(), "pwm_off_timer")
+    self.display_time(local_time)
+
+    var next_second = 1000 - (tasmota.millis() - millis)
+    tasmota.set_timer(next_second - self.SEC_SYNC_DURATION, /-> self.seconds_timer(), "seconds_timer")
   end
 end
 
