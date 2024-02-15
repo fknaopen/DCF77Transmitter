@@ -27,7 +27,7 @@ class DCF77Transmitter
 
   def init()
     if gpio.pin(gpio.PWM1) < 0
-      print("DCF77: PWM pin not configured.")
+      print("DCF: PWM pin not configured.")
       return
     end
 
