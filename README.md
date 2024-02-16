@@ -7,7 +7,7 @@ Simulates the [DCF77](https://en.wikipedia.org/wiki/DCF77) time code signal on a
 Upload the Tasmota appication `DCF77Transmitter.tapp` to the file system and reboot. The application run in the background and the transmitted data is written in the logs:
 
 ```
-DCF77: Sun 04.02.24 16:02 CET: 0-00000000000000-000101-00100001-0110101-001000-111-01000-001001001
+DCF: Sun 04.02.24 16:02 CET: 0-00000000000000-000101-00100001-0110101-001000-111-01000-001001001
 ```
 
 To build manually, execute following in the repo directory
@@ -18,8 +18,6 @@ rm -f DCF77Transmitter.tapp; zip -j -0 DCF77Transmitter.tapp src/*.be
 The signal is submitted to the first configured PWM pin, check with: `gpio.pin(gpio.PWM1)` 
 
 Following parameter could be configured in the `persist` module:
-
-`localtime_offset` - integer (default: 0): Adjustment for the synchronized localtime in seconds
 
 `dcf77_offset` - integer (default: 60): Time offset of the transmitted time in seconds (by default next minute)
 
