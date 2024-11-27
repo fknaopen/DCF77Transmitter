@@ -40,7 +40,7 @@ class DCF77Transmitter
       self.clock_label = self.lv.label(scr)
       self.clock_label.set_text("--:--:--")
       self.clock_label.set_align(self.lv.ALIGN_CENTER)
-      self.clock_label.set_style_text_font(self.lv.seg7_font(36), self.lv.PART_MAIN | self.lv.STATE_DEFAULT)
+      self.clock_label.set_style_text_font(self.lv.seg7_font(28), self.lv.PART_MAIN | self.lv.STATE_DEFAULT)
       self.clock_label.set_style_text_color(self.lv.color(self.lv.COLOR_WHITE), self.lv.PART_MAIN | self.lv.STATE_DEFAULT)
     end
 
@@ -68,6 +68,7 @@ class DCF77Transmitter
     tasmota.cmd(f"PWMRange {self.PWM_RANGE}",true)
 
     tasmota.set_timer(100, /-> self.seconds_timer(), "seconds_timer")
+    tasmota.set_power(0, false)
   end
 
   def deinit()
@@ -110,43 +111,47 @@ class DCF77Transmitter
       rtc_utc = tasmota.rtc_utc()
     end
 
-    var sec = rtc_utc % 60
-    if sec < 59
-      gpio.set_pwm(gpio.pin(gpio.PWM1), self.PWM_OFF)
-      var pwm_silence = self.dcf77_bits[sec] & 1 ? 200 : 100
-      self.pwm_millis = millis + pwm_silence
-      tasmota.set_timer(pwm_silence - self.PWM_SYNC_DURATION, /-> self.pwm_timer(),"pwm_timer")
-    end
-
-    var local_time = tasmota.rtc()["local"]
-
-    if sec == 59 # prepare next time code
-      var time_dump = tasmota.time_dump(local_time + 1 + self.dcf77_offset)
-      self.dcf77_encode(self.DST_BIT, 2, self.dcf77_dst  ? 1 : 2, 1) # parity = leap second -> 0
-      self.dcf77_encode(self.MIN_BIT, 7, time_dump["min"], 0)
-      self.dcf77_encode(self.HOUR_BIT, 6, time_dump["hour"], 0)
-      self.dcf77_encode(self.DAY_BIT, 6, time_dump["day"], 0)
-      self.dcf77_encode(self.WEEKDAY_BIT, 3, time_dump["weekday"] == 0 ? 7 : time_dump["weekday"])
-      self.dcf77_encode(self.MONTH_BIT, 5, time_dump["month"])
-      self.dcf77_encode(self.YEAR_BIT, 8, time_dump["year"]% 100)
-    end
-
-    if self.clock_label
-      var time_dump = tasmota.time_dump(local_time)
-      self.clock_label.set_text(f"{time_dump['hour']}:{time_dump['min']:02d}:{time_dump['sec']:02d}")
-    end
-
-    if local_time % 60 == 0
-      var dcf77_time = tasmota.strftime(f"%a %d.%m.%y %H:%M ", local_time + self.dcf77_offset)
-      dcf77_time += (self.dcf77_dst ? "CEST" : "CET") + ": "
-      for bit: 0..58
-        dcf77_time += (self.dcf77_bits[bit] & 8 ? "-" : "") + string.char(string.byte('0') + (self.dcf77_bits[bit] & 1))
+    if tasmota.get_power()[0] == false
+      gpio.set_pwm(gpio.pin(gpio.PWM1), self.PWM_RANGE)	# LED off Value for M5StickC
+    else
+      var sec = rtc_utc % 60
+      if sec < 59
+        gpio.set_pwm(gpio.pin(gpio.PWM1), self.PWM_OFF)
+        var pwm_silence = self.dcf77_bits[sec] & 1 ? 200 : 100
+        self.pwm_millis = millis + pwm_silence
+        tasmota.set_timer(pwm_silence - self.PWM_SYNC_DURATION, /-> self.pwm_timer(),"pwm_timer")
       end
-      print(f"DCF: {dcf77_time}")
-    end
 
-    if (millis - millis_start) > self.SEC_SYNC_DURATION
-      print(f"DCF: Out of sync")
+      var local_time = tasmota.rtc()["local"]
+
+      if sec == 59 # prepare next time code
+        var time_dump = tasmota.time_dump(local_time + 1 + self.dcf77_offset)
+        self.dcf77_encode(self.DST_BIT, 2, self.dcf77_dst  ? 1 : 2, 1) # parity = leap second -> 0
+        self.dcf77_encode(self.MIN_BIT, 7, time_dump["min"], 0)
+        self.dcf77_encode(self.HOUR_BIT, 6, time_dump["hour"], 0)
+        self.dcf77_encode(self.DAY_BIT, 6, time_dump["day"], 0)
+        self.dcf77_encode(self.WEEKDAY_BIT, 3, time_dump["weekday"] == 0 ? 7 : time_dump["weekday"])
+        self.dcf77_encode(self.MONTH_BIT, 5, time_dump["month"])
+        self.dcf77_encode(self.YEAR_BIT, 8, time_dump["year"]% 100)
+      end
+
+      if self.clock_label
+        var time_dump = tasmota.time_dump(local_time)
+        self.clock_label.set_text(f"{time_dump['hour']}:{time_dump['min']:02d}:{time_dump['sec']:02d}")
+      end
+
+      if local_time % 60 == 0
+        var dcf77_time = tasmota.strftime(f"%a %d.%m.%y %H:%M ", local_time + self.dcf77_offset)
+        dcf77_time += (self.dcf77_dst ? "CEST" : "CET") + ": "
+        for bit: 0..58
+          dcf77_time += (self.dcf77_bits[bit] & 8 ? "-" : "") + string.char(string.byte('0') + (self.dcf77_bits[bit] & 1))
+        end
+        print(f"DCF: {dcf77_time}")
+      end
+
+      if (millis - millis_start) > self.SEC_SYNC_DURATION
+        print(f"DCF: Out of sync")
+      end
     end
 
     var next_second = 1000 - (tasmota.millis() - millis)
