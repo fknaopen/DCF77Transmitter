@@ -112,7 +112,7 @@ class DCF77Transmitter
     end
 
     if tasmota.get_power()[0] == false
-      gpio.set_pwm(gpio.pin(gpio.PWM1), self.PWM_RANGE)	# LED off Value for M5StickC
+      ##gpio.set_pwm(gpio.pin(gpio.PWM1), self.PWM_RANGE)
     else
       var sec = rtc_utc % 60
       if sec < 59
